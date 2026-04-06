@@ -40,7 +40,7 @@
         }
     </style>
 </head>
-<!-- Anti-drag added to body via HTML attribute, though JS will also enforce it -->
+<!-- Anti-drag added to body via HTML attribute -->
 <body class="bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 min-h-screen flex flex-col items-center justify-center font-sans text-white p-4" ondragstart="return false;" ondrop="return false;">
 
     <!-- Main Container -->
@@ -122,25 +122,19 @@
 
         // Disable Keyboard Shortcuts (F12, Ctrl+U, Ctrl+Shift+I, Ctrl+C)
         document.addEventListener('keydown', function(e) {
-            // Allow copy/paste (Ctrl+C, Ctrl+V, Ctrl+X) ONLY inside the input field
             if (e.target.tagName === 'INPUT') return;
 
-            // Block F12 (DevTools)
-            if (e.key === 'F12') {
-                e.preventDefault();
-            }
-            // Block Ctrl+Shift+I / Ctrl+Shift+J / Ctrl+Shift+C (DevTools)
+            if (e.key === 'F12') e.preventDefault();
             if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j' || e.key === 'C' || e.key === 'c')) {
                 e.preventDefault();
             }
-            // Block Ctrl+U (View Source) and Ctrl+C (Copy outside input)
             if (e.ctrlKey && (e.key === 'U' || e.key === 'u' || e.key === 'C' || e.key === 'c' || e.key === 'S' || e.key === 's')) {
                 e.preventDefault();
             }
         });
 
         /* =========================================
-           APP LOGIC
+           APP LOGIC (UPDATED TO BYPASS PLDT BLOCK)
            ========================================= */
         
         const form = document.getElementById('shorten-form');
@@ -157,7 +151,6 @@
         const errorText = document.getElementById('error-text');
         const toast = document.getElementById('toast');
 
-        // Form Submit Event
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const longUrl = input.value.trim();
@@ -171,16 +164,31 @@
             submitBtn.classList.add('opacity-75', 'cursor-not-allowed');
 
             try {
-                const response = await fetch(`https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`);
+                // Swapped to GoTiny API (Bypasses PLDT blocks)
+                const response = await fetch('https://gotiny.cc/api', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ input: longUrl })
+                });
+
+                if (!response.ok) {
+                    throw new Error('API is currently unreachable. Please try again.');
+                }
+
                 const data = await response.json();
 
-                if (data.shorturl) {
-                    shortUrlDisplay.href = data.shorturl;
-                    shortUrlDisplay.innerText = data.shorturl;
+                // GoTiny returns an array: [ { long: "...", code: "xyz" } ]
+                if (data && data.length > 0 && data[0].code) {
+                    const finalShortUrl = `https://gotiny.cc/${data[0].code}`;
+                    
+                    shortUrlDisplay.href = finalShortUrl;
+                    shortUrlDisplay.innerText = finalShortUrl;
                     resultContainer.classList.remove('hidden');
                     input.value = ''; 
                 } else {
-                    throw new Error(data.errormessage || 'Invalid URL or API error.');
+                    throw new Error(data.error?.message || 'Invalid URL or API error.');
                 }
             } catch (err) {
                 errorText.innerText = err.message || 'Failed to shorten the URL. Please try again.';
@@ -193,7 +201,6 @@
             }
         });
 
-        // Copy to Clipboard Event
         copyBtn.addEventListener('click', async () => {
             const urlToCopy = shortUrlDisplay.innerText;
             if(!urlToCopy) return;
